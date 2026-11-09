@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Pulpit{% endblock %}
+
+{% block content %}
+<h2>Podsumowanie finansów</h2>
+
+<div class="cards">
+    <div class="card"><p>Przychody</p><h2>{{ summary.income|pln }}</h2></div>
+    <div class="card"><p>Wydatki</p><h2>{{ summary.expense|pln }}</h2></div>
+    <div class="card"><p>Dostępne środki teraz</p><h2>{{ summary.balance|pln }}</h2></div>
+    <div class="card"><p>Oszczędności</p><h2>{{ summary.savings|pln }}</h2></div>
+</div>
+
+{% if forecast is not none %}
+<div class="forecast {{ 'forecast-ok' if forecast.safe else 'forecast-warn' }}">
+    <strong>Szacowane dostępne saldo na koniec miesiąca: {{ forecast.end_balance|pln }}</strong>
+    <span>
+        To prognoza po uwzględnieniu przyszłych wpływów, rachunków i szacowanych wydatków zmiennych. Nie jest to dodatkowa kwota do wydania.
+        {% if not forecast.safe %} Prognoza wskazuje możliwy debet — ogranicz wydatki lub sprawdź symulacje.{% endif %}
+    </span>
+    <small>Do końca miesiąca: wpływy +{{ forecast.income_left|pln }}, rachunki −{{ forecast.bills_left|pln }}, szacowane wydatki −{{ forecast.variable_left|pln }}.</small>
+</div>
+{% endif %}
+
+<section class="section">
+    <h2>Przychody i wydatki w czasie</h2>
+    {% if chart.labels %}
+    <div class="chart-box"><canvas id="cashflowChart" aria-label="Wykres przychodów i wydatków"></canvas></div>
+    {% else %}
+    <p class="empty">Wykres pojawi się po dodaniu pierwszych transakcji.</p>
+    {% endif %}
+</section>
+
+<div class="two-col">
+    <section class="section">
+        <h2>Najbliższe terminy</h2>
+        {% for e in events %}
+        <div class="event">
+            <span class="event-date">{{ e.date }}</span>
+            <span class="event-name">{{ e.name }}</span>
+            <span class="amount {{ 'plus' if e.kind == 'income' else 'minus' }}">{{ '+' if e.kind == 'income' else '−' }}{{ e.amount|pln }}</span>
+        </div>
+        {% else %}
+        <p class="empty">Brak zaplanowanych wypłat i rachunków.</p>
+        {% endfor %}
+    </section>
+
+    <section class="section">
+        <h2>Ostatnie transakcje</h2>
+        {% for t in transactions %}
+        <div class="event">
+            <span class="event-date">{{ t.date }}</span>
+            <span class="event-name">{{ t.description }}<small>{{ t.category }} · {{ t.member }}</small></span>
+            <span class="amount {{ 'plus' if t.kind == 'income' else 'minus' }}">{{ '+' if t.kind == 'income' else '−' }}{{ t.amount|pln }}</span>
+        </div>
+        {% else %}
+        <p class="empty">Nie dodano jeszcze żadnych transakcji.</p>
+        <a class="btn" href="{{ url_for('transakcje') }}">Dodaj transakcję</a>
+        {% endfor %}
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if chart.labels %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+const data = {{ chart|tojson }};
+new Chart(document.getElementById('cashflowChart'), {
+    type: 'bar',
+    data: {
+        labels: data.labels,
+        datasets: [
+            { label: 'Przychody', data: data.income, backgroundColor: '#65a77d', borderRadius: 6 },
+            { label: 'Wydatki', data: data.expense, backgroundColor: '#d58b75', borderRadius: 6 }
+        ]
+    },
+    options: { maintainAspectRatio: false, scales: { y: { beginAtZero: true, ticks: { callback: v => v + ' zł' } } } }
+});
+</script>
+{% endif %}
+{% endblock %}

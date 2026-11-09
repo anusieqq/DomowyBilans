@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% block title %}Transakcje{% endblock %}
+
+{% block content %}
+<h2>Transakcje</h2>
+
+<section class="section">
+    <h3>Dodaj transakcję</h3>
+    <form method="post" class="form-grid">
+        <label>Rodzaj
+            <select name="kind" required>
+                <option value="expense">Wydatek</option>
+                <option value="income">Dochód</option>
+            </select>
+        </label>
+        <label>Kwota (zł)
+            <input type="number" name="amount" min="0.01" step="0.01" placeholder="np. 249,99" required>
+        </label>
+        <label>Data
+            <input type="date" name="date" value="{{ today }}" required>
+        </label>
+        <label>Kategoria
+            <select name="category" required>
+                {% for c in categories %}<option>{{ c }}</option>{% endfor %}
+            </select>
+        </label>
+        <label>Domownik
+            <select name="member" required>
+                {% for m in members %}<option>{{ m }}</option>{% endfor %}
+            </select>
+        </label>
+        <label>Regularność
+            <select name="nature">
+                <option value="zmienny" selected>Zmienny / nieregularny</option>
+                <option value="stały">Stały / regularny</option>
+            </select>
+        </label>
+        <label class="full">Opis
+            <input type="text" name="description" maxlength="120" placeholder="np. Zakupy spożywcze">
+        </label>
+        <div class="full"><button class="btn" type="submit">Zapisz transakcję</button></div>
+    </form>
+</section>
+
+<section class="section">
+    <h3>Stałe dochody i wydatki</h3>
+    <p class="muted">Usunięcie pozycji zatrzymuje jej odnawianie w kolejnych miesiącach. Wcześniej zapisane transakcje zostają w historii.</p>
+    {% if fixed_items %}
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Rodzaj</th><th>Nazwa</th><th>Domownik</th><th>Termin co miesiąc</th><th class="num">Kwota</th><th></th></tr></thead>
+            <tbody>
+            {% for item in fixed_items %}
+                <tr>
+                    <td><span class="badge {{ 'badge-income' if item.kind == 'income' else 'badge-expense' }}">{{ 'Dochód' if item.kind == 'income' else 'Wydatek' }}</span></td>
+                    <td>{{ item.name }}<small class="table-subtitle">{{ item.category }}</small></td>
+                    <td>{{ item.member }}</td>
+                    <td>{{ item.day }}. dzień miesiąca</td>
+                    <td class="num amount {{ 'plus' if item.kind == 'income' else 'minus' }}">{{ '+' if item.kind == 'income' else '−' }}{{ item.amount|pln }}</td>
+                    <td><form method="post" action="{{ url_for('usun_stala_pozycje', item_id=item.id) }}" onsubmit="return confirm('Usunąć tę stałą pozycję? Nie będzie już uwzględniana w kolejnych miesiącach. Zapisana historia pozostanie bez zmian.')"><button class="btn-icon" type="submit">Zatrzymaj odnawianie</button></form></td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="empty">Nie ma aktywnych stałych dochodów ani wydatków.</p>
+    {% endif %}
+</section>
+
+<section class="section">
+    <h3>Szukaj i filtruj</h3>
+    <form method="get" class="form-grid filters">
+        <label>Od <input type="date" name="from" value="{{ request.args.get('from', '') }}"></label>
+        <label>Do <input type="date" name="to" value="{{ request.args.get('to', '') }}"></label>
+        <label>Kwota od <input type="number" name="min" step="0.01" value="{{ request.args.get('min', '') }}"></label>
+        <label>Kwota do <input type="number" name="max" step="0.01" value="{{ request.args.get('max', '') }}"></label>
+        <label>Kategoria
+            <select name="category">
+                <option value="">Wszystkie</option>
+                {% for c in categories %}<option {{ 'selected' if request.args.get('category') == c }}>{{ c }}</option>{% endfor %}
+            </select>
+        </label>
+        <label>Domownik
+            <select name="member">
+                <option value="">Wszyscy</option>
+                {% for m in members %}<option {{ 'selected' if request.args.get('member') == m }}>{{ m }}</option>{% endfor %}
+            </select>
+        </label>
+        <label>Rodzaj
+            <select name="kind">
+                <option value="">Dochody i wydatki</option>
+                <option value="income" {{ 'selected' if request.args.get('kind') == 'income' }}>Tylko dochody</option>
+                <option value="expense" {{ 'selected' if request.args.get('kind') == 'expense' }}>Tylko wydatki</option>
+            </select>
+        </label>
+        <div class="actions">
+            <button class="btn" type="submit">Filtruj</button>
+            <a class="btn secondary" href="{{ url_for('transakcje') }}">Wyczyść</a>
+            <a class="btn secondary" href="{{ url_for('transakcje') }}?{{ request.query_string.decode() }}&eksport=csv">Eksportuj CSV</a>
+        </div>
+    </form>
+</section>
+
+<section class="section">
+    <h3>Lista transakcji</h3>
+    {% if transactions %}
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Data</th><th>Opis</th><th>Kategoria</th><th>Domownik</th><th>Regularność</th><th class="num">Kwota</th><th></th></tr></thead>
+            <tbody>
+            {% for t in transactions %}
+                <tr>
+                    <td>{{ t.date }}</td><td>{{ t.description }}</td><td>{{ t.category }}</td>
+                    <td>{{ t.member }}</td><td><span class="badge">{{ t.nature }}</span></td>
+                    <td class="num amount {{ 'plus' if t.kind == 'income' else 'minus' }}">{{ '+' if t.kind == 'income' else '−' }}{{ t.amount|pln }}</td>
+                    <td><form method="post" action="{{ url_for('usun_transakcje', tx_id=t.id) }}" onsubmit="return confirm('Usunąć tę transakcję?')"><button class="btn-icon" type="submit" aria-label="Usuń transakcję">Usuń</button></form></td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="empty">Brak transakcji pasujących do filtrów.</p>
+    {% endif %}
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+const kindSelect = document.querySelector('select[name="kind"]');
+const categorySelect = document.querySelector('select[name="category"]');
+const natureSelect = document.querySelector('select[name="nature"]');
+const syncCategories = () => {
+    const income = kindSelect.value === 'income';
+    for (const option of categorySelect.options) {
+        option.hidden = income ? option.value !== 'Wynagrodzenie' && option.value !== 'Inne'
+                              : option.value === 'Wynagrodzenie';
+    }
+    if (categorySelect.selectedOptions[0]?.hidden) categorySelect.value = income ? 'Wynagrodzenie' : 'Mieszkanie';
+};
+const syncNature = () => { natureSelect.value = kindSelect.value === 'income' ? 'stały' : 'zmienny'; };
+kindSelect.addEventListener('change', () => { syncCategories(); syncNature(); });
+syncCategories();
+syncNature();
+</script>
+{% endblock %}

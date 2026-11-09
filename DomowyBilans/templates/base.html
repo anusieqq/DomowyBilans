@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Pulpit{% endblock %} – Domowy Bilans</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+    <header>
+        <div class="header-inner">
+            <div>
+                <h1>Domowy Bilans</h1>
+                <p>Centrum zarządzania finansami Twojego domu</p>
+            </div>
+            <nav aria-label="Główna nawigacja">
+                {% set links = [('index', 'Pulpit'), ('transakcje', 'Transakcje'), ('budzet', 'Budżet i cele'), ('symulacje', 'Symulacje')] %}
+                {% for endpoint, label in links %}
+                <a href="{{ url_for(endpoint) }}" {% if request.endpoint == endpoint %}class="active" aria-current="page"{% endif %}>{{ label }}</a>
+                {% endfor %}
+            </nav>
+        </div>
+    </header>
+
+    <main class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% for category, message in messages %}
+            <div class="alert alert-{{ category }}" role="alert">{{ message }}</div>
+            {% endfor %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </main>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Symulacje{% endblock %}
+{% block content %}
+<h2>Symulacje sytuacji awaryjnych</h2>
+<p class="lead">Sprawdź, jak budżet poradzi sobie z utratą dochodu lub niespodziewanym wydatkiem.</p>
+<section class="section">
+    <form method="post" class="form-grid">
+        <label>Scenariusz<select name="scenario" id="scenario" required><option value="income_loss">Utrata źródła dochodu</option><option value="expense">Niespodziewany wydatek</option></select></label>
+        <label id="sourceField">Źródło dochodu<select name="source" {% if not sources %}disabled{% endif %}>{% for s in sources %}<option value="{{ s.id }}">{{ s.name }} · {{ s.amount|pln }}/mies.</option>{% endfor %}</select>{% if not sources %}<small>Brak zapisanych źródeł dochodu.</small>{% endif %}</label>
+        <label id="amountField" hidden>Kwota wydatku (zł)<input type="number" name="amount" min="0.01" step="0.01" placeholder="np. 2500,00"></label>
+        <label id="durationField">Czas utraty dochodu (miesiące)
+            <input type="number" name="duration" min="1" max="24" step="1" placeholder="Puste pole = bezterminowo">
+            <small>Jeśli nie znasz czasu powrotu dochodu, zostaw pole puste. Utrata będzie trwała przez cały wybrany okres prognozy.</small>
+        </label>
+        <label>Okres prognozy (miesiące)<input type="number" name="horizon" min="1" max="24" value="12" required></label>
+        <div class="full"><button class="btn" type="submit">Uruchom symulację</button></div>
+    </form>
+</section>
+{% if result %}
+<section class="section">
+    <h3>Wynik: {{ result.headline }}</h3>
+    <div class="cards simulation-cards">
+        <div class="card"><p>Saldo teraz</p><h2>{{ result.start|pln }}</h2></div>
+        <div class="card"><p>Saldo po {{ result.params.horizon }} mies.</p><h2>{{ result.end|pln }}</h2></div>
+        <div class="card"><p>Najniższe saldo</p><h2>{{ result.lowest|pln }}</h2></div>
+        <div class="card"><p>Wpływy po zmianie</p><h2>{{ result.income_after|pln }}</h2></div>
+    </div>
+    <div class="forecast {{ 'forecast-ok' if result.safe else 'forecast-warn' }}"><strong>{{ 'Saldo nie spada poniżej zera w wybranym okresie.' if result.safe else 'Prognozowane saldo spadnie poniżej zera.' }}</strong></div>
+    {% if result.params.source_id %}<p class="tip">Utrata dochodu: {% if result.params.indefinite %}bezterminowa{% else %}{{ result.params.loss_months }} mies.{% endif %}. Tabela pokazuje wybrany okres prognozy: {{ result.params.horizon }} mies.</p>{% endif %}
+    <p class="simulation-basis"><strong>Podstawa obliczeń miesięcznych:</strong>
+        stałe dochody {{ result.basis.fixed_income|pln }} + średnia nieregularnych dochodów {{ result.basis.irregular_income|pln }};
+        stałe wydatki {{ result.basis.fixed_expense|pln }} + średnia nieregularnych wydatków {{ result.basis.irregular_expense|pln }}.
+        {% if result.basis.history_months %}Średnie obejmują {{ result.basis.history_months }} pełnych mies. historii (maks. 12).{% else %}Brak pełnych miesięcy historii dla nieregularnych transakcji.{% endif %}
+        Saldo jest sprawdzane na koniec miesiąca, bez rozpisania kolejności wpływów i rachunków w jego trakcie.
+    </p>
+    {% for tip in result.tips %}<p class="tip">{{ tip }}</p>{% endfor %}
+    <div class="table-wrap"><table><thead><tr><th>Miesiąc</th><th class="num">Bez zmian</th><th class="num">W scenariuszu</th></tr></thead><tbody>{% for row in result.rows %}<tr><td>{{ row.label }}</td><td class="num">{{ row.base|pln }}</td><td class="num">{{ row.scen|pln }}</td></tr>{% endfor %}</tbody></table></div>
+</section>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+const scenario = document.getElementById('scenario');
+const sourceField = document.getElementById('sourceField');
+const amountField = document.getElementById('amountField');
+const durationLabel = document.getElementById('durationField');
+const toggle = () => {
+  const loss = scenario.value === 'income_loss';
+  sourceField.hidden = !loss;
+  amountField.hidden = loss;
+  durationLabel.hidden = !loss;
+  amountField.querySelector('input').required = !loss;
+  durationLabel.querySelector('input').required = false;
+};
+scenario.addEventListener('change', toggle); toggle();
+</script>
+{% endblock %}

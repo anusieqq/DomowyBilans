@@ -1,0 +1,393 @@
+DOMOWY BILANS — DOKUMENTACJA PROJEKTU
+====================================
+
+Dokument opisuje aktualny kod projektu. Aplikacja jest lokalną aplikacją webową
+w Pythonie/Flasku. Użytkownik korzysta z HTML w przeglądarce, Flask obsługuje
+adresy i formularze, SQLAlchemy komunikuje się z SQLite, a moduł services.py
+wykonuje obliczenia finansowe.
+
+1. PLIKI I FOLDERY
+------------------
+
+app.py
+  Główny moduł uruchomieniowy aplikacji Flask. Konfiguruje Flask i bazę,
+  rejestruje filtr walutowy i trasy HTTP, waliduje formularze oraz renderuje
+  szablony. Przy imporcie tworzy brakujące tabele i uruchamia seed_if_empty().
+
+services.py
+  Logika finansowa oddzielona od obsługi stron: sumy, formatowanie, filtry,
+  nadchodzące terminy, prognoza, limity, cele oszczędnościowe i symulacje.
+
+models.py
+  Definicje tabel SQLAlchemy: Member, Transaction, Planned, Budget i
+  SavingsGoal. Typy kolumn i relacje określają strukturę danych w SQLite.
+
+extensions.py
+  Tworzy wspólny obiekt SQLAlchemy (db), który modele i aplikacja inicjalizują
+  wspólną konfiguracją.
+
+config.py
+  Konfiguracja aplikacji: klucz Flask, ścieżka do domowy_bilans.db oraz
+  ustawienie wyłączenia śledzenia zmian SQLAlchemy.
+
+seed.py
+  Dane demonstracyjne i funkcje seed()/seed_if_empty(). Uruchomienie tego
+  pliku bezpośrednio czyści bazę i wstawia próbne dane od nowa. Nie uruchamiać
+  w celu zwykłego startu aplikacji, bo seed(reset=True) usuwa istniejące dane.
+
+domowy_bilans.db
+  Plik SQLite z danymi aplikacji: domownikami, transakcjami, planowanymi
+  dochodami i rachunkami, limitami oraz celami. To dane, nie kod źródłowy.
+
+templates/base.html
+  Wspólny szkielet stron: polski język dokumentu, nagłówek, nawigacja,
+  komunikaty Flask i bloki Jinja na tytuł, treść oraz skrypty.
+
+templates/index.html
+  Pulpit: miesięczne podsumowanie, dostępne saldo, prognoza, wykres, najbliższe
+  terminy i ostatnie transakcje. Wykres tworzy Chart.js.
+
+templates/transakcje.html
+  Formularz zapisu transakcji, tabela stałych dochodów i wydatków, formularze
+  filtrów, lista wyników i eksport CSV. JavaScript dobiera domyślną regularność
+  i kategorie do rodzaju transakcji.
+
+templates/budzet.html
+  Widok limitów wydatków i celów oszczędnościowych. Zawiera formularze
+  ustawiania limitu, tworzenia celu, wpłaty do celu i usuwania wpisów.
+
+templates/symulacje.html
+  Formularz symulacji utraty dochodu lub niespodziewanego wydatku oraz wyniki:
+  salda w kolejnych miesiącach, saldo najniższe i porównanie scenariuszy.
+  JavaScript pokazuje pola właściwe dla wybranego scenariusza.
+
+static/css/style.css
+  Kolory, typografia, układ kart, formularzy, tabel, komunikatów, pasków
+  postępu i widoków mobilnych. Nie zawiera logiki finansowej.
+
+DomowyBilans.py
+  Dawny, minimalny prototyp z jedną statyczną stroną. Nie jest aktywnym
+  punktem startowym; projekt Visual Studio wskazuje app.py.
+
+DomowyBilans.pyproj / DomowyBilans.sln
+  Pliki projektu i rozwiązania Visual Studio. Wskazują app.py jako plik startowy
+  oraz opisują konfigurację projektu.
+
+__pycache__/
+  Automatycznie tworzony cache skompilowanych modułów Python. Nie jest
+  źródłem logiki aplikacji i może zostać wygenerowany ponownie.
+
+.vs/ oraz .git/
+  Pliki robocze Visual Studio i metadane kontroli wersji. Nie są częścią
+  działania aplikacji w przeglądarce.
+
+2. MODEL DANYCH
+---------------
+
+Member
+  Domownik. Ma id oraz unikalną nazwę. Transaction i Planned mogą wskazywać
+  domownika przez member_id.
+
+Transaction
+  Zapisany, jednorazowy dochód lub wydatek. Pola: rodzaj (income/expense),
+  kwota, data, kategoria, opis, regularność (stały/zmienny) i domownik.
+  Historia transakcji wpływa na sumy, saldo, wykresy i średnie.
+
+Planned
+  Zaplanowany miesięczny wpływ lub rachunek. Pola: rodzaj, nazwa, kwota,
+  dzień miesiąca, kategoria, flaga regular oraz domownik. Te rekordy są
+  używane do nadchodzących terminów, prognozy i tabeli stałych pozycji.
+  Usunięcie stałej pozycji usuwa Planned; nie kasuje historycznych Transaction.
+
+Budget
+  Jeden miesięczny limit na kategorię. Kategoria jest unikalna.
+
+SavingsGoal
+  Cel oszczędnościowy: nazwa, kwota docelowa, odłożona kwota i opcjonalny
+  termin. Odłożone kwoty są sumowane oddzielnie od dostępnego salda.
+
+Kwoty w modelach używają Numeric(10,2), aby przechowywać dwie cyfry groszy.
+Obliczenia w services.py konwertują wyniki do float i zaokrąglają do 2 miejsc.
+
+3. PRZEPŁYW DZIAŁANIA
+---------------------
+
+1) Przeglądarka wysyła żądanie GET lub POST do jednej z tras w app.py.
+2) Flask wywołuje funkcję obsługującą trasę.
+3) Przy POST dane są walidowane; poprawne rekordy są dodawane, zmieniane lub
+   usuwane przez SQLAlchemy i zatwierdzane przez db.session.commit().
+4) Zapytania odczytujące i obliczenia wykonują usługi z services.py.
+5) render_template() łączy szablon Jinja z danymi i zwraca HTML.
+6) Jinja automatycznie escapuje tekst użytkownika; formularze usuwania wysyłają
+   POST, a przeglądarka pokazuje potwierdzenie JavaScript.
+
+Start: uruchom app.py w środowisku z Flask i Flask-SQLAlchemy. Aplikacja
+tworzy tabele, jeśli ich brakuje. Jeśli baza nie ma domowników, seed_if_empty()
+wstawia przykładowe rekordy. Lokalna baza jest trwała między uruchomieniami.
+
+Kategorie transakcji są zadeklarowane w services.py. W formularzu dochodu
+JavaScript ogranicza listę do Wynagrodzenie i Inne; wydatki nie pokazują
+kategorii Wynagrodzenie. Dochód domyślnie otrzymuje regularność stały, wydatek
+zmienny. Użytkownik może ręcznie zmienić tę wartość.
+
+4. FUNKCJE W app.py
+-------------------
+
+pln(value)
+  Filtr Jinja `pln`. Deleguje formatowanie do services.pln(), żeby kwoty na
+  stronach miały wspólny polski zapis, np. 1 234,56 zł.
+
+form_amount(field)
+  Pobiera pole formularza POST i przekazuje tekst do services.parse_amount().
+
+categories()
+  Zwraca listę kategorii z services.CATEGORIES dla formularzy transakcji.
+
+index()
+  GET /. Pobiera podsumowanie, prognozę, serię wykresu, terminy i ostatnie
+  transakcje; renderuje templates/index.html.
+
+transakcje()
+  GET/POST /transakcje. POST sprawdza kwotę, datę, rodzaj, kategorię i domownika,
+  tworzy Transaction i zapisuje ją w SQLite. GET pobiera listę po filtrach.
+  Parametr eksport=csv zwraca filtrowane wyniki jako UTF-8 CSV rozdzielany
+  średnikami, z BOM dla poprawnego otwarcia polskich znaków w arkuszach.
+
+usun_transakcje(tx_id)
+  POST /transakcje/<id>/usun. Usuwa pojedynczą transakcję z historii i wraca
+  do listy. Działa tylko dla istniejącego id.
+
+usun_stala_pozycje(item_id)
+  POST /transakcje/stale/<id>/usun. Usuwa aktywny regularny rekord Planned.
+  W ten sposób przestaje on pojawiać się jako cykliczny termin/rachunek oraz
+  przestaje wpływać na prognozę. Historycznych Transaction nie usuwa.
+
+budzet()
+  GET/POST /budzet. Rozpoznaje rodzaj formularza przez pole `form`:
+  `budget` tworzy lub aktualizuje limit kategorii, `goal` dodaje cel, a
+  `deposit` dopisuje wpłatę do celu po kontroli dostępnego salda. Po zapisie
+  przekierowuje do strony (wzorzec Post/Redirect/Get), aby odświeżenie nie
+  wysyłało formularza ponownie. Przy GET pobiera zestawienia limitów i celów.
+
+usun_limit(budget_id)
+  POST /budzet/limity/<id>/usun. Usuwa wskazany limit.
+
+usun_cel(goal_id)
+  POST /budzet/cele/<id>/usun. Usuwa wskazany cel oraz jego odłożoną kwotę.
+
+symulacje()
+  GET/POST /symulacje. Podaje dostępne planowane dochody. POST sprawdza
+  scenariusz, opcjonalną liczbę miesięcy utraty dochodu (puste pole oznacza
+  bezterminowo; wpisana wartość musi mieścić się w zakresie 1–24) i okres
+  prognozy, potem wywołuje services.simulate(). Bezterminowa utrata jest
+  liczona przez wszystkie miesiące wybranego okresu prognozy.
+
+Blok startowy `if __name__ == "__main__"` uruchamia serwer developerski Flask.
+Flaga debug=True jest wygodna lokalnie, ale nie jest ustawieniem produkcyjnym.
+
+5. FUNKCJE W services.py
+------------------------
+
+r2(x)
+  Zamienia wartość na float, traktuje None/zero jako 0 i zaokrągla do groszy.
+
+pln(value)
+  Formatuje kwotę jako polskie złote: separator tysięcy to spacja, część
+  dziesiętna używa przecinka, a minus jest zapisywany znakiem −. None daje –.
+
+fmt(d)
+  Formatuje datę jako DD.MM.RRRR.
+
+add_months(d, n)
+  Przesuwa datę o n miesięcy. Jeśli pierwotny dzień nie istnieje w docelowym
+  miesiącu, ogranicza go do ostatniego dnia tego miesiąca.
+
+clamp_day(y, m, day)
+  Tworzy datę w miesiącu y/m i ogranicza dzień 29–31 do końca miesiąca.
+
+month_label(d)
+  Zwraca skróconą polską nazwę miesiąca i dwie ostatnie cyfry roku.
+
+parse_amount(raw)
+  Akceptuje kwotę z przecinkiem lub kropką i spacjami, zaokrągla do groszy.
+  Zwraca None, jeśli zapis jest niepoprawny, kwota <= 0 lub >= 1 000 000.
+
+parse_date(raw)
+  Czyta datę ISO (YYYY-MM-DD); zwraca None dla błędnego zapisu.
+
+_sum(kind, start=None, end=None)
+  Zapytaniem SQL sumuje transakcje rodzaju kind. Początek jest włącznie,
+  koniec wyłącznie. COALESCE zamienia pustą sumę na zero.
+
+savings_total()
+  Sumuje pole saved wszystkich celów oszczędnościowych.
+
+balance()
+  Dostępne środki = suma wszystkich dochodów historycznych − suma wszystkich
+  wydatków historycznych − odłożone kwoty celów. Nie obejmuje planowanych,
+  przyszłych transakcji.
+
+summary()
+  Zwraca przychody i wydatki od pierwszego dnia bieżącego miesiąca do pierwszego
+  dnia kolejnego miesiąca (koniec przedziału wyłączny), bieżące balance()
+  oraz oszczędności.
+
+monthly_series(n=6)
+  Dla n kolejnych miesięcy, domyślnie 6, liczy oddzielne sumy dochodów i
+  wydatków. Wynik zawiera etykiety i tablice do wykresu Chart.js.
+
+averages(n=3)
+  Średnie dochody i wydatki z n ostatnich pełnych miesięcy. Bieżący, jeszcze
+  niepełny miesiąc jest pomijany. Nadwyżka = średnie dochody − średnie wydatki.
+
+row(t)
+  Zamienia Transaction SQLAlchemy na słownik do HTML/CSV: daty, opis,
+  kategorię, domownika, regularność, rodzaj i kwotę.
+
+recent_transactions(n=6)
+  Pobiera n najnowszych transakcji; sortuje malejąco po dacie i id.
+
+filter_transactions(args)
+  Buduje zapytanie SQL listy transakcji. Opcjonalnie filtruje zakres dat,
+  minimalną/maksymalną kwotę, kategorię, rodzaj i domownika. Wyniki sortuje
+  od najnowszych. Niepoprawne daty/kwoty nie dodają danego ograniczenia.
+
+next_date(day, today=None)
+  Wyznacza najbliższe wystąpienie dnia miesiąca. Gdy dzień już minął, wybiera
+  kolejny miesiąc; clamp_day obsługuje krótsze miesiące.
+
+upcoming_events(days=30)
+  Tworzy listę zdarzeń Planned przypadających w ciągu najbliższych dni.
+  Wpisy są sortowane po dacie i przygotowywane do wyświetlenia na pulpicie.
+
+regular_items()
+  Pobiera Planned z flagą regular=True, zamienia na proste słowniki i sortuje
+  najpierw dochody, potem wydatki, a w obrębie rodzaju po dniu i nazwie.
+
+irregular_monthly_averages()
+  Ustala okres historii: maksymalnie 12 pełnych miesięcy przed bieżącym
+  miesiącem, ograniczony do daty pierwszej zapisanej transakcji. Dzieli sumę
+  nieregularnych wpływów i wydatków przez liczbę pełnych miesięcy w tym okresie,
+  więc miesiące bez zmiennej transakcji liczą się jako zero. Korzysta z
+  Transaction.nature == "zmienny". Pomija historię odpowiadającą aktywnym
+  stałym planom (także gdy stary rekord ma błędną regularność) oraz wpis
+  „Saldo początkowe”, który jest saldem otwarcia, a nie zarobkiem. Zwraca też
+  średnie nieregularnych wpływów według opisu i domownika, aby symulować utratę
+  takiego źródła. Jeśli historia ma mniej niż rok, używa dostępnych pełnych
+  miesięcy.
+
+forecast()
+  Prognozuje dostępne saldo na koniec bieżącego miesiąca. Jeśli nie ma ani
+  transakcji, ani planów, zwraca None. Do balance() dodaje planowane dochody,
+  które mają jeszcze nadejść, odejmuje pozostałe planowane wydatki oraz
+  szacowane wydatki zmienne.
+
+  Szacunek zmiennych wydatków miesięcznie = max(średnie wydatki z 3 pełnych
+  miesięcy − suma planowanych miesięcznych wydatków, 0). Część pozostała do
+  końca miesiąca = ten szacunek × liczba pozostałych dni / liczba dni miesiąca.
+  `safe` jest prawdą, gdy wynik końcowy nie jest ujemny. Jest to prognoza salda,
+  a nie rekomendacja kwoty do wydania.
+
+budget_overview()
+  Dla każdej kategorii wydatków zestawia wydatki w bieżącym miesiącu, średnią
+  z 3 poprzednich miesięcy i zapisany limit. Prognoza kategorii na koniec
+  miesiąca = dotychczasowy wydatek / numer dzisiejszego dnia × liczba dni
+  miesiąca. Procent limitu = wydatek / limit × 100. Pozostało = limit − wydatek.
+  Status ostrzega, gdy limit został przekroczony, prognoza przekracza limit
+  albo wykorzystano co najmniej 80% limitu.
+
+  Dla kategorii ze średnią >= 20 zł, z wyjątkiem Mieszkania, sugeruje limit
+  równy około 90% średniej, zaokrąglony do najbliższych 10 zł. `potential`
+  sumuje różnice między średnią a sugerowanym limitem.
+
+  Wewnętrzna funkcja by_cat(s,e) agreguje SQL-em wydatki według kategorii
+  w podanym przedziale dat.
+
+goals_overview()
+  Oblicza postęp każdego celu: pozostało = max(cel − odłożono, 0), procent
+  realizacji, status i miesięczne tempo potrzebne do terminu. Liczbę miesięcy
+  szacuje jako ceil(liczba dni / 30,4), minimum 1. Średnia nadwyżka pochodzi
+  z averages() i nie może być mniejsza niż zero. Jeśli jest dodatnia, szacowany
+  termin osiągnięcia celu oblicza się z pozostałej kwoty / miesięczna nadwyżka.
+  Funkcja dodaje wskazówki, gdy tempo oszczędzania nie wystarcza na cele.
+
+deposit(goal_id, amount)
+  Sprawdza, czy cel istnieje i czy wpłata nie przekracza balance(). Zwiększa
+  saved i zapisuje zmianę. Zwraca tekst błędu albo None po sukcesie.
+
+simulate(source_id, loss_months, expense, horizon)
+  Buduje prognozę bazową i scenariuszową przez horizon miesięcy. Miesięczny
+  dochód bazowy = suma aktywnych Planned income z regular=True + średnia
+  nieregularnych wpływów z irregular_monthly_averages(). Miesięczny wydatek
+  bazowy = suma aktywnych Planned expense z regular=True + średnia nieregularnych
+  wydatków z tej samej funkcji. Każdy miesiąc dodaje dochód bazowy i odejmuje
+  wydatek bazowy. W scenariuszu utraty źródła stałego odejmuje jego zaplanowaną
+  kwotę; dla nieregularnego źródła odejmuje średnią miesięczną z historii
+  o pasującym opisie i domowniku. Utrata trwa loss_months albo — gdy parametr
+  jest None — bezterminowo, czyli przez cały horyzont prognozy. Jednorazowy
+  expense jest odejmowany w pierwszym prognozowanym miesiącu.
+
+  Wynik zawiera saldo bazowe/scenariuszowe, minimum, saldo końcowe, różnicę,
+  wskazówki i breakdown `basis`, który pokazuje stałe kwoty, średnie zmienne
+  i liczbę miesięcy historii. „Bezpieczne” nadal oznacza wyłącznie nieujemne
+  saldo na końcu każdego prognozowanego miesiąca; obliczenie nie modeluje
+  kolejności wpływu i rachunków w obrębie miesiąca.
+
+Stałe CATEGORIES/EXPENSE_CATEGORIES/FIXED_CATEGORIES/MONTHS są wspólnymi
+ustawieniami nazw kategorii, kategorii wydatkowych, kategorii bez sugestii cięć
+i skrótów miesięcy. STATUS_LABELS mapuje wewnętrzne statusy celów na polskie
+etykiety.
+
+6. SZABLONY I FUNKCJE PRZEGLĄDARKI
+---------------------------------
+
+Jinja `{% extends "base.html" %}` współdzieli nawigację i komunikaty. `url_for`
+generuje adresy tras Flask, a `|pln` formatuje walutę. Warunki `{% if %}` i pętle
+`{% for %}` pokazują dane z bazy lub komunikat pustego widoku.
+
+index.html:
+  Chart.js rysuje słupki przychodów i wydatków na podstawie JSON przekazanego
+  przez `tojson`. CDN Chart.js wymaga dostępu do Internetu, aby wykres działał.
+
+transakcje.html — syncCategories():
+  Pokazuje kategorie Wynagrodzenie/Inne dla dochodu i pozostałe dla wydatku.
+  Jeżeli aktualnie wybrana kategoria znika z listy, wybiera pierwszą właściwą.
+
+transakcje.html — syncNature():
+  Ustawia domyślną regularność `stały` dla dochodu oraz `zmienny` dla wydatku.
+  Uruchamia się po zmianie rodzaju i po załadowaniu formularza.
+
+symulacje.html — toggle():
+  Przy utracie dochodu pokazuje wybór źródła i okres utraty; przy wydatku
+  pokazuje kwotę jednorazową oraz wymaga jej w przeglądarce.
+
+CSS @media dostosowuje siatki i karty do mniejszych ekranów. :focus-visible
+zachowuje widoczny fokus klawiatury, a prefers-reduced-motion ogranicza ruch.
+
+7. BIBLIOTEKI I NARZĘDZIA
+-------------------------
+
+Python — język aplikacji i logiki finansowej.
+Flask — serwer HTTP, routingi, formularze, komunikaty i renderowanie Jinja.
+Flask-SQLAlchemy / SQLAlchemy — mapowanie modeli na SQL oraz zapytania.
+SQLite — baza przechowywana w pliku domowy_bilans.db.
+HTML/Jinja — struktura i dynamiczne widoki.
+CSS — wygląd responsywny.
+Chart.js — wykres na pulpicie, pobierany z CDN.
+Visual Studio — pliki .sln/.pyproj umożliwiają pracę nad projektem.
+
+W bazie używane są zapytania SQL agregujące sumy i grupujące wydatki według
+kategorii. Logika obliczeń jest po stronie services.py, żeby trasy i szablony
+nie musiały samodzielnie liczyć budżetu.
+
+8. UWAGI O DANYCH PRZYKŁADOWYCH
+-------------------------------
+
+seed.py tworzy demonstracyjny zestaw danych, nie opisuje prawdziwych finansów.
+Wynagrodzenie Marii, umowa Anny oraz wybrane rachunki są teraz oznaczone jako
+regularne i trafiają do tabeli stałych pozycji. Zmiana flagi regular w istniejącej
+bazie nie zmienia wcześniej zapisanych transakcji automatycznie; poprawione
+rekordy demonstracyjne są aktualizowane osobno, gdy zmieniamy dane projektu.
+
+Uruchomienie `python seed.py` kasuje wszystkie tabele i wstawia przykłady od
+nowa. Nie należy tego robić na bazie zawierającej własne dane.
